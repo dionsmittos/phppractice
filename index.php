@@ -1,5 +1,8 @@
 <?php
+require_once __DIR__ . '/openai.php';
+
 $antwoord = '';
+$toolOutputs = [];
 $fout = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -11,34 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $env = parse_ini_file(__DIR__ . '/.env');
         $apiKey = $env['OPENAI_API_KEY'] ?? '';
 
-        $data = [
-            'model' => 'gpt-4o-mini',
-            'messages' => [
-                ['role' => 'user', 'content' => $vraag],
-            ],
-        ];
-
-        $ch = curl_init('https://api.openai.com/v1/chat/completions');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $apiKey,
-        ]);
-
-        $response = curl_exec($ch);
-        $curlFout = curl_error($ch);
-
-        if ($curlFout) {
-            $fout = 'cURL fout: ' . $curlFout;
+        if (empty($apiKey)) {
+            $fout = 'OPENAI_API_KEY staat niet in .env';
         } else {
-            $result = json_decode($response, true);
-            if (isset($result['error'])) {
-                $fout = 'API fout: ' . $result['error']['message'];
-            } else {
-                $antwoord = $result['choices'][0]['message']['content'];
-            }
+            $uitkomst = voerChatUit($vraag, $apiKey, $tools);
+            $antwoord = $uitkomst['antwoord'];
+            $toolOutputs = $uitkomst['tool_outputs'];
         }
     }
 }
@@ -90,6 +71,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 16px;
             color: #c0392b;
         }
+        .tool-json {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .tool-details {
+            margin-top: 20px;
+            padding: 12px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        .tool-details summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -105,6 +109,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?php if ($antwoord): ?>
         <div class="antwoord"><?= htmlspecialchars($antwoord) ?></div>
+        <details class="tool-details" <?= !empty($toolOutputs) ? 'open' : '' ?>>
+            <summary>Functieresultaten (JSON)</summary>
+            <?php if (!empty($toolOutputs)): ?>
+                <?php foreach ($toolOutputs as $t): ?>
+                    <p><strong><?= htmlspecialchars($t['functie']) ?></strong></p>
+                    <pre class="tool-json"><?= htmlspecialchars($t['json']) ?></pre>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p class="tool-json">Geen functies aangeroepen voor dit antwoord.</p>
+            <?php endif; ?>
+        </details>
     <?php endif; ?>
 </body>
 </html>
